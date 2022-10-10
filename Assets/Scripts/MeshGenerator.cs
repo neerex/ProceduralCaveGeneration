@@ -1,139 +1,171 @@
-using System;
 using UnityEngine;
+using System.Collections.Generic;
 
 public class MeshGenerator : MonoBehaviour
 {
-    public SquareGrid SquareGrid;
+    private SquareGrid _squareGrid;
+    private List<Vector3> _vertices = new();
+    private List<int> _triangles = new();
+
+    private MeshFilter _meshFilter;
+
+    private void Start()
+    {
+        _meshFilter = GetComponent<MeshFilter>();
+    }
 
     public void GenerateMesh(int[,] map, float squareSize)
     {
-        SquareGrid = new SquareGrid(map, squareSize);
-    }
-
-    private void OnDrawGizmos()
-    {
-        if (SquareGrid == null) return;
-
-        for (int x = 0; x < SquareGrid.Squares.GetLength(0); x++)
-        {
-            for (int y = 0; y < SquareGrid.Squares.GetLength(1); y++)
-            {
-                //Draw control nodes
-                Gizmos.color = SquareGrid.Squares[x, y].TopLeft.Active ? Color.black : Color.white;
-                Gizmos.DrawCube(SquareGrid.Squares[x,y].TopLeft.Position, Vector3.one * 0.4f);
-                
-                Gizmos.color = SquareGrid.Squares[x, y].TopRight.Active ? Color.black : Color.white;
-                Gizmos.DrawCube(SquareGrid.Squares[x,y].TopRight.Position, Vector3.one * 0.4f);
-                
-                Gizmos.color = SquareGrid.Squares[x, y].BottomLeft.Active ? Color.black : Color.white;
-                Gizmos.DrawCube(SquareGrid.Squares[x,y].BottomLeft.Position, Vector3.one * 0.4f);
-                
-                Gizmos.color = SquareGrid.Squares[x, y].BottomRight.Active ? Color.black : Color.white;
-                Gizmos.DrawCube(SquareGrid.Squares[x,y].BottomRight.Position, Vector3.one * 0.4f);
-
-                //draw (middle) nodes
-                Gizmos.color = Color.grey;
-                Gizmos.DrawCube(SquareGrid.Squares[x,y].CenterLeft.Position, Vector3.one * 0.2f);
-                Gizmos.DrawCube(SquareGrid.Squares[x,y].CenterTop.Position, Vector3.one * 0.2f);
-                Gizmos.DrawCube(SquareGrid.Squares[x,y].CenterRight.Position, Vector3.one * 0.2f);
-                Gizmos.DrawCube(SquareGrid.Squares[x,y].CenterBottom.Position, Vector3.one * 0.2f);
-            }
-        }
-    }
-}
-
-
-public class Node
-{
-    public Vector3 Position;
-    public int VertexIndex = -1;
-
-    public Node(Vector3 position)
-    {
-        Position = position;
-    }
-}
-
-public class ControlNode : Node
-{
-    public bool Active; // is wall
-    public Node Above;
-    public Node Right;
-
-    public ControlNode(Vector3 position, bool active, float squareSize) : base(position)
-    {
-        Active = active;
-        Above = new Node(position + Vector3.forward * squareSize / 2f);
-        Right = new Node(position + Vector3.right * squareSize / 2f);
-    }
-}
-
-public class Square
-{
-    public ControlNode TopLeft;
-    public ControlNode TopRight;
-    public ControlNode BottomRight;
-    public ControlNode BottomLeft;
-
-    public Node CenterTop;
-    public Node CenterRight;
-    public Node CenterLeft;
-    public Node CenterBottom;
-
-    public Square(ControlNode topLeft, ControlNode topRight, ControlNode bottomRight, ControlNode bottomLeft)
-    {
-        TopLeft = topLeft;
-        TopRight = topRight;
-        BottomRight = bottomRight;
-        BottomLeft = bottomLeft;
-
-        CenterTop = topLeft.Right;
-        CenterRight = bottomRight.Above;
-        CenterLeft = bottomLeft.Above;
-        CenterBottom = bottomLeft.Right;
-    }
-}
+        _vertices.Clear();
+        _triangles.Clear();
         
-public class SquareGrid
-{
-    public Square[,] Squares;
-
-    public SquareGrid(int[,] map, float squareSize)
-    {
-        int nodeCountX = map.GetLength(0);
-        int nodeCountY = map.GetLength(1);
+        _squareGrid = new SquareGrid(map, squareSize);
         
-        float mapWidth = nodeCountX * squareSize;
-        float mapHeight = nodeCountY * squareSize;
-
-        ControlNode[,] controlNodes = new ControlNode[nodeCountX, nodeCountY];
-
-        for (int x = 0; x < nodeCountX; x++)
+        for (int x = 0; x < _squareGrid.Squares.GetLength(0); x++)
         {
-            for (int y = 0; y < nodeCountY; y++)
+            for (int y = 0; y < _squareGrid.Squares.GetLength(1); y++)
             {
-                float xPos = -mapWidth / 2 + x * squareSize + squareSize / 2;
-                float zPos = -mapHeight / 2 + y * squareSize + squareSize / 2;
-                
-                Vector3 pos = new Vector3(xPos, 0, zPos);
-                bool isWall = map[x, y] == 1;
-                
-                controlNodes[x, y] = new ControlNode(pos, isWall, squareSize);
+                TriangulateSquare(_squareGrid.Squares[x,y]);
             }
         }
 
-        Squares = new Square[nodeCountX - 1, nodeCountY - 1];
-        for (int x = 0; x < nodeCountX - 1; x++)
+        Mesh mesh = new Mesh();
+        _meshFilter.mesh = mesh;
+        mesh.vertices = _vertices.ToArray();
+        mesh.triangles = _triangles.ToArray();
+        mesh.RecalculateNormals();
+    }
+
+    private void TriangulateSquare(Square square)
+    {
+        // see scheme.png in Sprites folder
+        switch (square.Configuration)
         {
-            for (int y = 0; y < nodeCountY - 1; y++)
+            case 0:
+                break;
+            
+            //1 point active
+            case 1: // 0001
+                MeshFromPoints(square.CenterLeft, square.CenterBottom, square.BottomLeft);
+                break;
+            
+            case 2: // 0010
+                MeshFromPoints(square.CenterRight, square.BottomRight, square.CenterBottom);
+                break;
+            
+            case 4: //0100
+                MeshFromPoints(square.CenterTop, square.TopRight, square.CenterRight);
+                break;
+            
+            case 8: //1000
+                MeshFromPoints(square.TopLeft, square.CenterTop, square.CenterLeft);
+                break;
+            
+            //2 points active
+            case 3: // 0011
+                MeshFromPoints(square.CenterRight, square.BottomRight, square.BottomLeft, square.CenterLeft);
+                break;
+            
+            case 5: // 0101
+                MeshFromPoints(square.CenterTop, square.TopRight, square.CenterRight, square.CenterBottom, square.BottomLeft, square.CenterLeft);
+                break;
+            
+            case 6: // 0110
+                MeshFromPoints(square.CenterTop, square.TopRight, square.BottomRight, square.CenterBottom);
+                break;
+
+            case 9: // 1001
+                MeshFromPoints(square.TopLeft, square.CenterTop, square.CenterBottom, square.BottomLeft);
+                break;
+
+            case 10: // 1010
+                MeshFromPoints(square.TopLeft, square.CenterTop, square.CenterRight, square.BottomRight, square.CenterBottom, square.CenterLeft);
+                break;
+            
+            case 12: // 1100
+                MeshFromPoints(square.TopLeft, square.TopRight, square.CenterRight, square.CenterLeft);
+                break;
+            
+            //3 points active
+            case 7: // 0111
+                MeshFromPoints(square.CenterTop, square.TopRight, square.BottomRight, square.BottomLeft, square.CenterLeft);
+                break;
+            
+            case 11: // 1011
+                MeshFromPoints(square.TopLeft, square.CenterTop, square.CenterRight, square.BottomRight, square.BottomLeft);
+                break;
+            
+            case 13: // 1101
+                MeshFromPoints(square.TopLeft, square.TopRight, square.CenterRight, square.CenterBottom, square.BottomLeft);
+                break;
+            
+            case 14: // 1110
+                MeshFromPoints(square.TopLeft, square.TopRight, square.BottomRight, square.CenterBottom, square.CenterLeft);
+                break;
+            
+            //4 point active
+            case 15: // 1111
+                MeshFromPoints(square.TopLeft, square.TopRight, square.BottomRight, square.BottomLeft);
+                break;
+        }
+    }
+
+    private void MeshFromPoints(params Node[] points)
+    {
+        AssignVertices(points);
+        if(points.Length >= 3) CreateTriangle(points[0], points[1], points[2]);
+        if(points.Length >= 4) CreateTriangle(points[0], points[2], points[3]);
+        if(points.Length >= 5) CreateTriangle(points[0], points[3], points[4]);
+        if(points.Length >= 6) CreateTriangle(points[0], points[4], points[5]);
+    }
+
+    private void AssignVertices(Node[] points)
+    {
+        for (int i = 0; i < points.Length; i++)
+        {
+            if (points[i].VertexIndex == -1)
             {
-                Squares[x, y] = new Square(
-                    controlNodes[x, y + 1],
-                    controlNodes[x + 1, y + 1],
-                    controlNodes[x + 1, y],
-                    controlNodes[x, y]
-                );
+                points[i].VertexIndex = _vertices.Count;
+                _vertices.Add(points[i].Position);
             }
         }
     }
+
+    private void CreateTriangle(Node a, Node b, Node c)
+    {
+        _triangles.Add(a.VertexIndex);
+        _triangles.Add(b.VertexIndex);
+        _triangles.Add(c.VertexIndex);
+    }
+
+    // private void OnDrawGizmos()
+    // {
+    //     if (_squareGrid == null) return;
+    //
+    //     for (int x = 0; x < _squareGrid.Squares.GetLength(0); x++)
+    //     {
+    //         for (int y = 0; y < _squareGrid.Squares.GetLength(1); y++)
+    //         {
+    //             //Draw control nodes
+    //             Gizmos.color = _squareGrid.Squares[x, y].TopLeft.Active ? Color.black : Color.white;
+    //             Gizmos.DrawCube(_squareGrid.Squares[x,y].TopLeft.Position, Vector3.one * 0.4f);
+    //             
+    //             Gizmos.color = _squareGrid.Squares[x, y].TopRight.Active ? Color.black : Color.white;
+    //             Gizmos.DrawCube(_squareGrid.Squares[x,y].TopRight.Position, Vector3.one * 0.4f);
+    //             
+    //             Gizmos.color = _squareGrid.Squares[x, y].BottomLeft.Active ? Color.black : Color.white;
+    //             Gizmos.DrawCube(_squareGrid.Squares[x,y].BottomLeft.Position, Vector3.one * 0.4f);
+    //             
+    //             Gizmos.color = _squareGrid.Squares[x, y].BottomRight.Active ? Color.black : Color.white;
+    //             Gizmos.DrawCube(_squareGrid.Squares[x,y].BottomRight.Position, Vector3.one * 0.4f);
+    //
+    //             //draw (middle) nodes
+    //             Gizmos.color = Color.grey;
+    //             Gizmos.DrawCube(_squareGrid.Squares[x,y].CenterLeft.Position, Vector3.one * 0.2f);
+    //             Gizmos.DrawCube(_squareGrid.Squares[x,y].CenterTop.Position, Vector3.one * 0.2f);
+    //             Gizmos.DrawCube(_squareGrid.Squares[x,y].CenterRight.Position, Vector3.one * 0.2f);
+    //             Gizmos.DrawCube(_squareGrid.Squares[x,y].CenterBottom.Position, Vector3.one * 0.2f);
+    //         }
+    //     }
+    // }
 }
