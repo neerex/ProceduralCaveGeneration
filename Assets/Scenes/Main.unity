@@ -420,8 +420,10 @@ MonoBehaviour:
   _width: 100
   _height: 70
   _borderSize: 5
-  _seed: 
-  _useRandomSeed: 1
+  _wallThresholdSize: 50
+  _roomThresholdSize: 300
+  _seed: 0
+  _useRandomSeed: 0
   _smoothIterations: 5
 --- !u!4 &1098955625
 Transform:
