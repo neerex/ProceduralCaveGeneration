@@ -4,7 +4,12 @@ using System.Collections.Generic;
 public class MeshGenerator : MonoBehaviour
 {
     [SerializeField] private MeshFilter _wallsMeshFilter;
-    [SerializeField] private float _wallHeight = 10;
+    [SerializeField] private MeshFilter _caveMeshFilter;
+    [SerializeField] private float _wallHeight = 5;
+    [SerializeField] [Range(1,10)] private int _textureTiles = 5;
+    
+    [SerializeField] private bool _is2D;
+    
     
     private readonly List<Vector3> _vertices = new();
     private readonly List<int> _triangles = new();
@@ -14,12 +19,6 @@ public class MeshGenerator : MonoBehaviour
     private readonly HashSet<int> _checkedVertices = new();
 
     private SquareGrid _squareGrid;
-    private MeshFilter _mapMeshFilter;
-
-    private void Awake()
-    {
-        _mapMeshFilter = GetComponent<MeshFilter>();
-    }
 
     public void GenerateMesh(int[,] map, float squareSize)
     {
@@ -36,12 +35,56 @@ public class MeshGenerator : MonoBehaviour
         }
 
         Mesh mesh = new Mesh();
-        _mapMeshFilter.mesh = mesh;
+        _caveMeshFilter.mesh = mesh;
         mesh.vertices = _vertices.ToArray();
         mesh.triangles = _triangles.ToArray();
         mesh.RecalculateNormals();
 
-        CreateWallMesh();
+        //calculating new uvs
+        Vector2[] uvs = new Vector2[_vertices.Count];
+        for (int i = 0; i < _vertices.Count; i++)
+        {
+            float percentX = Mathf.InverseLerp(
+                -map.GetLength(0)/2 * squareSize,
+                map.GetLength(0)/2 * squareSize,
+            _vertices[i].x) * _textureTiles;
+            
+            float percentY = Mathf.InverseLerp(
+                -map.GetLength(0)/2 * squareSize,
+                map.GetLength(0)/2 * squareSize,
+                _vertices[i].z) * _textureTiles;
+
+            uvs[i] = new Vector2(percentX, percentY);
+        }
+
+        mesh.uv = uvs;
+        
+        //generate
+        if (_is2D) Generate2DColliders();
+        else CreateWallMesh();
+    }
+
+    private void Generate2DColliders()
+    {
+        EdgeCollider2D[] currentColliders = gameObject.GetComponents<EdgeCollider2D>();
+        for (int i = 0; i < currentColliders.Length; i++)
+        {
+            Destroy(currentColliders[i]);
+        }
+        
+        CalculateMeshOutlines();
+        foreach (List<int> outline in _outlines)
+        {
+            EdgeCollider2D edgeCollider = gameObject.AddComponent<EdgeCollider2D>();
+            Vector2[] edgePoints = new Vector2[outline.Count];
+
+            for (int i = 0; i < outline.Count; i++)
+            {
+                edgePoints[i] = new Vector2(_vertices[outline[i]].x, _vertices[outline[i]].z);
+            }
+
+            edgeCollider.points = edgePoints;
+        }
     }
 
     private void ClearCommonDataHolders()
@@ -87,6 +130,9 @@ public class MeshGenerator : MonoBehaviour
         wallMesh.vertices = wallVertices.ToArray();
         wallMesh.triangles = wallTriangles.ToArray();
         _wallsMeshFilter.mesh = wallMesh;
+        
+        MeshCollider wallCollider = _wallsMeshFilter.gameObject.AddComponent<MeshCollider>();
+        wallCollider.sharedMesh = wallMesh;
     }
 
     private void TriangulateSquare(Square square)
