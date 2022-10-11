@@ -9,6 +9,8 @@ public class MapGenerator : MonoBehaviour
     [SerializeField] [Range(0,100)] private int _randomFillPercent = 45;
     [SerializeField] private int _width;
     [SerializeField] private int _height;
+    [SerializeField] [Range(0,30)] private int _borderSize = 5;
+    
     
     [Header("Random")]
     [SerializeField] private string _seed;
@@ -42,7 +44,30 @@ public class MapGenerator : MonoBehaviour
         for (int i = 0; i < _smoothIterations; i++) 
             SmoothMap();
 
-        _meshGenerator.GenerateMesh(_map, 1);
+        var borderedMap = GenerateBorderedMap();
+
+        _meshGenerator.GenerateMesh(borderedMap, 1);
+    }
+
+    private int[,] GenerateBorderedMap()
+    {
+        int[,] borderedMap = new int[_width + _borderSize * 2, _height + _borderSize * 2];
+
+        for (int x = 0; x < borderedMap.GetLength(0); x++)
+        {
+            for (int y = 0; y < borderedMap.GetLength(1); y++)
+            {
+                bool isInsideOfBorders = x >= _borderSize && x < _width + _borderSize &&
+                                         y >= _borderSize && y < _height + _borderSize;
+
+                if (isInsideOfBorders)
+                    borderedMap[x, y] = _map[x - _borderSize, y - _borderSize];
+                else
+                    borderedMap[x, y] = 1;
+            }
+        }
+        
+        return borderedMap;
     }
 
     private void RandomFillMap()
@@ -101,19 +126,4 @@ public class MapGenerator : MonoBehaviour
 
         return wallCount;
     }
-
-    // private void OnDrawGizmos()
-    // {
-    //     if (_map == null) return;
-    //     
-    //     for (int x = 0; x < _width; x++)
-    //     {
-    //         for (int y = 0; y < _height; y++)
-    //         {
-    //             Gizmos.color = _map[x, y] == 1 ? Color.black : Color.white;
-    //             Vector3 pos = new Vector3(-_width/2 + x + 0.5f, 0, -_height/2 + y + 0.5f);
-    //             Gizmos.DrawCube(pos,Vector3.one * 0.95f);
-    //         }
-    //     }
-    // }
 }
