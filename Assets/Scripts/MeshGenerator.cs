@@ -50,8 +50,8 @@ public class MeshGenerator : MonoBehaviour
             _vertices[i].x) * _textureTiles;
             
             float percentY = Mathf.InverseLerp(
-                -map.GetLength(0)/2 * squareSize,
-                map.GetLength(0)/2 * squareSize,
+                -map.GetLength(1)/2 * squareSize,
+                map.GetLength(1)/2 * squareSize,
                 _vertices[i].z) * _textureTiles;
 
             uvs[i] = new Vector2(percentX, percentY);
